@@ -14,8 +14,8 @@ import numpy as np
 
 class DCGAN():
     def __init__(self, loadModel=False):
-        self.img_rows = 28
-        self.img_cols = 28
+        self.img_rows = 100
+        self.img_cols = 100
         self.channels = 3
 
         if not loadModel:
@@ -232,11 +232,11 @@ class DCGAN():
 
 
 if __name__ == '__main__':
-#    dcgan = DCGAN()
-#    dcgan.train(epochs=100, batch_size=32, save_interval=50)
-#    dcgan.combined.save("dcgan/saved_model/combined.h5")
-#    dcgan.generator.save("dcgan/saved_model/generator.h5")
-#    dcgan.discriminator.save("dcgan/saved_model/discriminator.h5")
+    dcgan = DCGAN()
+    dcgan.train(epochs=1000, batch_size=32, save_interval=50)
+    dcgan.combined.save("dcgan/saved_model/combined.h5")
+    dcgan.generator.save("dcgan/saved_model/generator.h5")
+    dcgan.discriminator.save("dcgan/saved_model/discriminator.h5")
 
-     dcgan = DCGAN(True)
-     dcgan.save_imgs(666)
+#     dcgan = DCGAN(True)
+#     dcgan.save_imgs(666)
