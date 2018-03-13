@@ -11,12 +11,13 @@ from os import listdir, makedirs
 import os.path
 from keras.preprocessing.image import load_img, img_to_array
 import h5py
+import sys
 
 def load_dataset(datasetDir, img_rows, img_cols):
+    COUNT_NOTICE = 200
     imageSize = img_rows,img_cols
-
+    
     print("loading", datasetDir, "...")
-    images = []
     df = None
     
     h5Path = os.path.join( datasetDir, "h5/")
@@ -26,7 +27,7 @@ def load_dataset(datasetDir, img_rows, img_cols):
     picDir = os.path.join( datasetDir, "pics/")
 
     if not os.path.isfile( h5Path ):
-        print("processing images...")
+        print("No h5 dataset file found, processing images...")
         cantFiles = 0
         for f in listdir( picDir ):
             if f[-3:] == "jpg":
@@ -44,25 +45,27 @@ def load_dataset(datasetDir, img_rows, img_cols):
         i = 0
         for f in listdir( picDir ):
             if f[-3:] == "jpg":
+                sys.stdout.write('.')
+                sys.stdout.flush()
+                
                 img = load_img( os.path.join(picDir, f) )
                 img = resize_and_crop(img, imageSize)
                 img = img_to_array(img)
                 df[i] = img
                 
                 i+=1
+                
+                if i % COUNT_NOTICE == 0:
+                    sys.stdout.write('\n\r')
+                    print("[", i, "/", cantFiles, "]")
+                    sys.stdout.flush()
         
-#        images = np.array(images)
-        # print("shape images: ", images.shape)
-#        np.save( npyPath, images)
+        print("H5 dataset file saved.")
     else:
         print("loading " + h5Path )
         h5File = h5py.File(h5Path, 'r')
         df = h5File["df"]
-#        images = np.load( npyPath )
 
-#    print("shape images: ", images.shape)
-
-#    return images
     return df
 
 def resize_and_crop(img, size, crop_type='middle'):
