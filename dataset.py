@@ -40,7 +40,7 @@ def load_dataset(datasetDir, img_rows, img_cols):
             print("%d images found" % cantFiles )
         
         h5pyFile = h5py.File(h5Path, "w")
-        df = h5pyFile.create_dataset("df", (cantFiles,img_rows,img_cols,3), dtype=int)
+        df = h5pyFile.create_dataset("df", (cantFiles,img_rows,img_cols,3), dtype='B')
        
         i = 0
         for f in listdir( picDir ):
