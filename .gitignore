@@ -1,2 +1,4 @@
-instagram_manoloide
-instagram_manoloide_*
+datasets/*
+__pycache__/
+
+

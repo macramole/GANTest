@@ -1,1 +1,1 @@
-ffmpeg -i %d.png -c:v libx264 -vf fps=25 -pix_fmt yuv420p out.mp4
+ffmpeg -i %5d.png -c:v libx264 -vf fps=25 -pix_fmt yuv420p -b:v 3000k out.mp4

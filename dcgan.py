@@ -1,6 +1,6 @@
 from __future__ import print_function, division
 
-from keras.datasets import mnist
+#from keras.datasets import mnist
 from keras.layers import Input, Dense, Reshape, Flatten, Dropout
 from keras.layers import BatchNormalization, Activation, ZeroPadding2D
 from keras.layers.advanced_activations import LeakyReLU
@@ -12,16 +12,27 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import ImageGrid
 
 import numpy as np
-
+import os
 import csv
 
-class DCGAN():
-    def __init__(self, loadModel=False):
-        self.img_rows = 28
-        self.img_cols = 28
-        self.channels = 1
+import dataset
 
-        if not loadModel:
+class DCGAN():
+    def __init__(self, outputPath, datasetDir = None, modelPath=None, img_rows = 128, img_cols = 128, channels = 3):
+        self.img_rows = img_rows
+        self.img_cols = img_cols
+        self.channels = channels
+        self.datasetDir = datasetDir
+        
+        self.outputPath = outputPath
+        self.modelsPath = os.path.join(self.outputPath, "models/")
+        self.imagesPath = os.path.join(self.outputPath, "images/")
+        self.logPath = os.path.join(self.outputPath,  "log.csv")
+
+        if modelPath == None:
+            os.makedirs( self.modelsPath, exist_ok=True )
+            os.makedirs( self.imagesPath, exist_ok=True )
+            
             optimizer = Adam(0.0002, 0.5)
 
             # Build and compile the discriminator
@@ -52,9 +63,14 @@ class DCGAN():
         else:
             from keras.models import load_model
 
-            self.discriminator = load_model("dcgan/saved_model/discriminator.h5")
-            self.generator = load_model("dcgan/saved_model/generator.h5")
-            self.combined = load_model("dcgan/saved_model/combined.h5")
+#            self.discriminator = load_model(modelPath + "discriminator.h5")
+            self.generator = load_model(modelPath)
+#            self.combined = load_model(modelPath + "combined.h5")
+            
+            from time import localtime, strftime
+            self.outputPath = os.path.join(self.outputPath, strftime("%Y-%m-%d_%H-%M-%S", localtime()) )
+            os.makedirs( self.outputPath , exist_ok=True )
+            
 
     def build_generator(self):
 
@@ -69,13 +85,13 @@ class DCGAN():
         model.add(Reshape((neurons, neurons, 128)))
         model.add(BatchNormalization(momentum=0.8))
 
-#        model.add(Conv2D(512, kernel_size=3, padding="same"))
-#        model.add(Activation("relu"))
-#        model.add(BatchNormalization(momentum=0.8))
+        model.add(Conv2D(512, kernel_size=3, padding="same"))
+        model.add(Activation("relu"))
+        model.add(BatchNormalization(momentum=0.8))
 
-        # model.add(Conv2D(256, kernel_size=3, padding="same"))
-        # model.add(Activation("relu"))
-        # model.add(BatchNormalization(momentum=0.8))
+        model.add(Conv2D(256, kernel_size=3, padding="same"))
+        model.add(Activation("relu"))
+        model.add(BatchNormalization(momentum=0.8))
 
         model.add(UpSampling2D())
         model.add(Conv2D(128, kernel_size=3, padding="same"))
@@ -124,10 +140,10 @@ class DCGAN():
         model.add(LeakyReLU(alpha=0.2))
         model.add(Dropout(0.25))
 
-        # model.add(BatchNormalization(momentum=0.8))
-        # model.add(Conv2D(512, kernel_size=3, strides=1, padding="same"))
-        # model.add(LeakyReLU(alpha=0.2))
-        # model.add(Dropout(0.25))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Conv2D(512, kernel_size=3, strides=1, padding="same"))
+        model.add(LeakyReLU(alpha=0.2))
+        model.add(Dropout(0.25))
 
         model.add(Flatten())
         model.add(Dense(1, activation='sigmoid'))
@@ -137,95 +153,78 @@ class DCGAN():
         img = Input(shape=img_shape)
         validity = model(img)
 
-        return Model(img, validity)
+        return Model(img, validity)    
 
-    def load_dataset(self):
-        from os import listdir
-        import os.path
-        from keras.preprocessing.image import load_img, img_to_array
+    def train(self, epochs, batch_size=128, img_save_interval=100, model_save_interval=200):
 
-        datasetDir = "instagram_manoloide/"
-        imageSize = self.img_rows,self.img_cols
+        try:
+            # Load the dataset
+            # (X_train, _), (_, _) = mnist.load_data()
+            X_train = dataset.load_dataset(self.datasetDir, self.img_rows, self.img_cols)
+    
+            # Rescale -1 to 1
+            X_train = (X_train.astype(np.float32) - 127.5) / 127.5
+            # X_train = np.expand_dims(X_train, axis=3)
+    
+            half_batch = int(batch_size / 2)
+    
+            for epoch in range(epochs):
+    
+                # ---------------------
+                #  Train Discriminator
+                # ---------------------
+    
+                # Select a random half batch of images
+                idx = np.random.randint(0, X_train.shape[0], half_batch)
+                # idx = np.random.randint(0, X_train.shape[0], batch_size)
+                imgs = X_train[idx]
+    
+                # Sample noise and generate a half batch of new images
+                noise = np.random.normal(0, 1, (half_batch, 100))
+                gen_imgs = self.generator.predict(noise)
+                # print(imgs.shape)
+    
+                # Train the discriminator (real classified as ones and generated as zeros)
+                d_loss_real = self.discriminator.train_on_batch(imgs, np.ones((half_batch, 1)))
+                d_loss_fake = self.discriminator.train_on_batch(gen_imgs, np.zeros((half_batch, 1)))
+    
+                d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+    
+                # ---------------------
+                #  Train Generator
+                # ---------------------
+    
+                noise = np.random.normal(0, 1, (batch_size, 100))
+    
+                # Train the generator (wants discriminator to mistake images as real)
+                g_loss = self.combined.train_on_batch(noise, np.ones((batch_size, 1)))
+    
+                # Plot the progress
+                print ("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (epoch, d_loss[0], 100*d_loss[1], g_loss))
+    
+                with open(self.logPath, "a") as logfile:
+                    logwriter = csv.writer(logfile)
+                    logwriter.writerow([epoch, d_loss[0], 100*d_loss[1], g_loss])
+    
+                # If at save interval => save generated image samples
+                if epoch % img_save_interval == 0:
+                    self.generate(epoch)
+                if epoch % model_save_interval == 0:
+                    self.combined.save(os.path.join(self.modelsPath, "combined.%d.h5" % epoch))
+                    self.generator.save(os.path.join(self.modelsPath, "generator.%d.h5" % epoch))
+                    self.discriminator.save(os.path.join(self.modelsPath, "discriminator.%d.h5" % epoch))
+            
+            self.combined.save(os.path.join(self.modelsPath, "combined.%d.h5" % epochs))
+            self.generator.save(os.path.join(self.modelsPath, "generator.%d.h5" % epochs))
+            self.discriminator.save(os.path.join(self.modelsPath, "discriminator.%d.h5" % epochs))
+                    
+        except KeyboardInterrupt:
+            self.combined.save(os.path.join(self.modelsPath, "combined.unfinished.h5"))
+            self.generator.save(os.path.join(self.modelsPath, "generator.unfinished.h5"))
+            self.discriminator.save(os.path.join(self.modelsPath, "discriminator.unfinished.h5"))
+                
 
-        print("loading manolo...")
-        images = []
-        datasetFileName = datasetDir[0:-1] + "_" + str(self.img_rows)
-
-        if not os.path.isfile( datasetFileName + ".npy" ):
-            cantFiles = 0
-            for f in listdir(datasetDir):
-                if f[-3:] == "jpg":
-                    cantFiles += 1
-
-                    img = load_img(datasetDir + f)
-                    img.thumbnail(imageSize)
-                    img = img_to_array(img)
-
-                    images.append( img )
-
-            images = np.array(images)
-            np.save(datasetFileName, images)
-        else:
-            images = np.load(datasetFileName + ".npy")
-
-        return images
-
-
-    def train(self, epochs, batch_size=128, save_interval=50):
-
-        # Load the dataset
-        (X_train, _), (_, _) = mnist.load_data()
-        # X_train = self.load_dataset()
-
-        # Rescale -1 to 1
-        X_train = (X_train.astype(np.float32) - 127.5) / 127.5
-        X_train = np.expand_dims(X_train, axis=3)
-
-        half_batch = int(batch_size / 2)
-
-        for epoch in range(epochs):
-
-            # ---------------------
-            #  Train Discriminator
-            # ---------------------
-
-            # Select a random half batch of images
-            idx = np.random.randint(0, X_train.shape[0], half_batch)
-            # idx = np.random.randint(0, X_train.shape[0], batch_size)
-            imgs = X_train[idx]
-
-            # Sample noise and generate a half batch of new images
-            noise = np.random.normal(0, 1, (half_batch, 100))
-            gen_imgs = self.generator.predict(noise)
-            # print(imgs.shape)
-
-            # Train the discriminator (real classified as ones and generated as zeros)
-            d_loss_real = self.discriminator.train_on_batch(imgs, np.ones((half_batch, 1)))
-            d_loss_fake = self.discriminator.train_on_batch(gen_imgs, np.zeros((half_batch, 1)))
-
-            d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-
-            # ---------------------
-            #  Train Generator
-            # ---------------------
-
-            noise = np.random.normal(0, 1, (batch_size, 100))
-
-            # Train the generator (wants discriminator to mistake images as real)
-            g_loss = self.combined.train_on_batch(noise, np.ones((batch_size, 1)))
-
-            # Plot the progress
-            print ("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (epoch, d_loss[0], 100*d_loss[1], g_loss))
-
-            with open("dcgan/saved_model/log.csv", "a") as logfile:
-                logwriter = csv.writer(logfile)
-                logwriter.writerow([epoch, d_loss[0], 100*d_loss[1], g_loss])
-
-            # If at save interval => save generated image samples
-            if epoch % save_interval == 0:
-                self.save_imgs(epoch)
-
-    def save_imgs(self, epoch = None):
+    def generate(self, epoch = None):
 #         r, c = 5, 5
 #         noise = np.random.normal(0, 1, (r * c, 100))
 #         gen_imgs = self.generator.predict(noise)
@@ -254,7 +253,8 @@ class DCGAN():
             r, c = 3, 3
             noise = np.random.normal(0, 1, (r * c, 100))
             gen_imgs = self.generator.predict(noise)
-            gen_imgs = gen_imgs.reshape(r*c,28,28)
+            # print(gen_imgs.shape)
+            # gen_imgs = gen_imgs.reshape(r*c,self.img_rows,self.img_cols)
 
             # Rescale images 0 - 1
             gen_imgs = 0.5 * gen_imgs + 0.5
@@ -266,10 +266,10 @@ class DCGAN():
                  )
 
             for i in range(r*c):
-                grid[i].imshow( gen_imgs[i], cmap='gray')
-
-
-            fig.savefig("dcgan/images/out_%03d.png" % epoch)
+                # grid[i].imshow( gen_imgs[i], cmap='gray')
+                grid[i].imshow( gen_imgs[i])
+                    
+            fig.savefig( os.path.join(self.imagesPath, "out_%04d.png" % epoch) )
         else :
             import scipy.misc
 
@@ -327,9 +327,9 @@ class DCGAN():
 
             from scipy.interpolate import interp1d
 
-            where = 'dcgan/images/video6/%3d.png'
-            cantRandom = 20
-            cantInterpolation = 20
+            where = os.path.join( self.outputPath, "%05d.png" ) #'dcgan/images/4_wiki-women_2/video1/%05d.png'
+            cantRandom = 40
+            cantInterpolation = 30
 
             realNoise = np.random.normal(0, 1, (cantRandom-1, 100))
             realNoise = np.vstack( ( realNoise, realNoise[0] ) )
@@ -341,7 +341,7 @@ class DCGAN():
                 f = interp1d( x , y, axis = 0  )
 
                 noise = f( np.linspace(0,1,cantInterpolation+1, endpoint = False) )
-                gen_imgs = dcgan.generator.predict(noise)
+                gen_imgs = self.generator.predict(noise)
                 gen_imgs = 0.5 * gen_imgs + 0.5
 
                 for j in range(cantInterpolation+1):
@@ -365,24 +365,24 @@ class DCGAN():
 #
 #            scipy.misc.imsave('dcgan/images/out-big.png', gen_imgs[0])
 
-if __name__ == '__main__':
-    try:
-        dcgan = DCGAN()
+#if __name__ == '__main__':
+#     try:
+#         dcgan = DCGAN()
+#    
+#         with open("dcgan/saved_model/log.csv", "w") as logfile:
+#             logwriter = csv.writer(logfile)
+#             logwriter.writerow(["epoch","d_loss", "d_acc", "g_loss"])
+#    
+#         dcgan.train(epochs=40000, batch_size=32, save_interval=100)
+#    
+#         dcgan.combined.save("dcgan/saved_model/combined.h5")
+#         dcgan.generator.save("dcgan/saved_model/generator.h5")
+#         dcgan.discriminator.save("dcgan/saved_model/discriminator.h5")
+#     except KeyboardInterrupt:
+#         dcgan.combined.save("dcgan/saved_model/combined.unfinished.h5")
+#         dcgan.generator.save("dcgan/saved_model/generator.unfinished.h5")
+#         dcgan.discriminator.save("dcgan/saved_model/discriminator.unfinished.h5")
 
-        with open("dcgan/saved_model/log.csv", "w") as logfile:
-            logwriter = csv.writer(logfile)
-            logwriter.writerow(["epoch","d_loss", "d_acc", "g_loss"])
 
-        dcgan.train(epochs=4000, batch_size=32, save_interval=50)
-
-        dcgan.combined.save("dcgan/saved_model/combined.h5")
-        dcgan.generator.save("dcgan/saved_model/generator.h5")
-        dcgan.discriminator.save("dcgan/saved_model/discriminator.h5")
-    except KeyboardInterrupt:
-        dcgan.combined.save("dcgan/saved_model/combined.unfinished.h5")
-        dcgan.generator.save("dcgan/saved_model/generator.unfinished.h5")
-        dcgan.discriminator.save("dcgan/saved_model/discriminator.unfinished.h5")
-
-
-#     dcgan = DCGAN(True)
-#     dcgan.save_imgs()
+#    dcgan = DCGAN("dcgan/saved_model/wiki-women/")
+#    dcgan.generate()
