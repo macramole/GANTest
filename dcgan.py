@@ -163,7 +163,7 @@ class DCGAN():
             X_train = dataset.load_dataset(self.datasetDir, self.img_rows, self.img_cols)
     
             # Rescale -1 to 1
-            X_train = (X_train.astype(np.float32) - 127.5) / 127.5
+#            X_train = (X_train.astype(np.float32) - 127.5) / 127.5
             # X_train = np.expand_dims(X_train, axis=3)
     
             half_batch = int(batch_size / 2)
@@ -175,9 +175,15 @@ class DCGAN():
                 # ---------------------
     
                 # Select a random half batch of images
-                idx = np.random.randint(0, X_train.shape[0], half_batch)
+#                idx = np.random.randint(0, X_train.shape[0], half_batch)
+                idx = np.arange(X_train.shape[0])
+                np.random.shuffle(idx)
+                idx = list(idx[0:half_batch])
+                idx.sort()
+                
                 # idx = np.random.randint(0, X_train.shape[0], batch_size)
-                imgs = X_train[idx]
+                imgs = np.array(X_train[idx])
+                imgs = (imgs.astype(np.float32) - 127.5) / 127.5
     
                 # Sample noise and generate a half batch of new images
                 noise = np.random.normal(0, 1, (half_batch, 100))

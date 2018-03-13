@@ -10,47 +10,60 @@ import numpy as np
 from os import listdir, makedirs
 import os.path
 from keras.preprocessing.image import load_img, img_to_array
+import h5py
 
 def load_dataset(datasetDir, img_rows, img_cols):
     imageSize = img_rows,img_cols
 
     print("loading", datasetDir, "...")
     images = []
+    df = None
     
-    npyPath = os.path.join( datasetDir, "npy/")
-    os.makedirs(npyPath, exist_ok=True)
-    npyPath = os.path.join( npyPath, "dataset_" + str(img_rows) + ".npy")
+    h5Path = os.path.join( datasetDir, "h5/")
+    os.makedirs(h5Path, exist_ok=True)
+    h5Path = os.path.join( h5Path, "dataset_" + str(img_rows) + ".h5")
 
     picDir = os.path.join( datasetDir, "pics/")
 
-    if not os.path.isfile( npyPath ):
+    if not os.path.isfile( h5Path ):
         print("processing images...")
         cantFiles = 0
         for f in listdir( picDir ):
             if f[-3:] == "jpg":
                 cantFiles += 1
-
-                img = load_img( os.path.join(picDir, f) )
-#                    img.thumbnail(imageSize)
-                img = resize_and_crop(img, imageSize)
-                img = img_to_array(img)
-
-                images.append( img )
         
         if cantFiles == 0:
             print("No images found at %s" % picDir )
             exit()
-
-        images = np.array(images)
+        else:
+            print("%d images found" % cantFiles )
+        
+        h5pyFile = h5py.File(h5Path, "w")
+        df = h5pyFile.create_dataset("df", (cantFiles,img_rows,img_cols,3), dtype=int)
+       
+        i = 0
+        for f in listdir( picDir ):
+            if f[-3:] == "jpg":
+                img = load_img( os.path.join(picDir, f) )
+                img = resize_and_crop(img, imageSize)
+                img = img_to_array(img)
+                df[i] = img
+                
+                i+=1
+        
+#        images = np.array(images)
         # print("shape images: ", images.shape)
-        np.save( npyPath, images)
+#        np.save( npyPath, images)
     else:
-        print("loading " + npyPath )
-        images = np.load( npyPath )
+        print("loading " + h5Path )
+        h5File = h5py.File(h5Path, 'r')
+        df = h5File["df"]
+#        images = np.load( npyPath )
 
 #    print("shape images: ", images.shape)
 
-    return images
+#    return images
+    return df
 
 def resize_and_crop(img, size, crop_type='middle'):
     # Get current and desired ratio for the images
